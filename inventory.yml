@@ -1,8 +1,8 @@
 [master]
-master-node-01 ansible_host=10.10.10.4 ansible_user=kubadm
+master-node-01 ansible_host=10.10.10.4 ansible_user=kubadm ansible_ssh_pass=kUb123456789
 
 [workers]
-worker-node-01 ansible_host=10.10.20.4 ansible_user=kubadm
+worker-node-01 ansible_host=10.10.20.4 ansible_user=kubadm ansible_ssh_pass=kUb123456789
 
 
 [k8s:children]
