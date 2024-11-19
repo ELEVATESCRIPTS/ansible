@@ -1,0 +1,10 @@
+[master]
+master-node-01 ansible_host=10.10.10.4 ansible_user=kubadm
+
+[workers]
+worker-node-01 ansible_host=10.10.20.4 ansible_user=kubadm
+
+
+[k8s:children]
+master
+workers
