@@ -1,0 +1,97 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+
+    - name: Install necessary packages
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+          - ca-certificates
+        state: present
+
+    - name: Add Docker GPG key
+      command: >
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg |
+        gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+    - name: Add Docker repository
+      copy:
+        content: |
+          deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable
+        dest: /etc/apt/sources.list.d/docker.list
+
+    - name: Install Docker
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Enable and start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add Kubernetes GPG key
+      command: curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+    - name: Add Kubernetes repository
+      copy:
+        content: |
+          deb https://apt.kubernetes.io/ kubernetes-xenial main
+        dest: /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Install Kubernetes components
+      apt:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+        state: present
+
+    - name: Hold Kubernetes packages
+      apt:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+        state: present
+        force: yes
+        allow_unauthenticated: yes
+        update_cache: yes
+        default_release: ""
+        upgrade: no
+
+- hosts: master
+  become: yes
+  tasks:
+    - name: Initialize Kubernetes control plane
+      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      register: kubeadm_init
+
+    - name: Save kubeadm join command
+      copy:
+        dest: /tmp/kubeadm_join.sh
+        content: "{{ kubeadm_init.stdout_lines | join('\n') }}"
+        mode: '0700'
+
+    - name: Set up kubectl for root user
+      command: >
+        bash -c "mkdir -p $HOME/.kube && 
+        cp -i /etc/kubernetes/admin.conf $HOME/.kube/config &&
+        chown $(id -u):$(id -g) $HOME/.kube/config"
+
+    - name: Deploy Calico network
+      command: kubectl apply -f https://docs.projectcalico.org/v3.21/manifests/calico.yaml
+
+- hosts: workers
+  become: yes
+  tasks:
+    - name: Join worker nodes to cluster
+      shell: bash /tmp/kubeadm_join.sh
+      args:
+        executable: /bin/bash
