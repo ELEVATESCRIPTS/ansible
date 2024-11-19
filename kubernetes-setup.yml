@@ -1,10 +1,15 @@
 ---
 - hosts: all
   become: yes
+  vars:
+    docker_gpg_url: "https://download.docker.com/linux/ubuntu/gpg"
+    kubernetes_gpg_url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+    pod_network_cidr: "10.244.0.0/16"
+
   tasks:
     - name: Update apt packages
       apt:
-        update_cache: yes
+        update_cache: No
 
     - name: Install necessary packages
       apt:
@@ -12,23 +17,26 @@
           - curl
           - apt-transport-https
           - ca-certificates
+          - gnupg
         state: present
 
     - name: Add Docker GPG key
-      command: >
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg |
-        gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      get_url:
+        url: "{{ docker_gpg_url }}"
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg
+        mode: '0644'
 
     - name: Add Docker repository
-      copy:
-        content: |
-          deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable
-        dest: /etc/apt/sources.list.d/docker.list
+      lineinfile:
+        path: /etc/apt/sources.list.d/docker.list
+        line: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_facts['lsb']['codename'] | lower }} stable"
+        create: yes
 
     - name: Install Docker
       apt:
         name: docker-ce
         state: present
+        update_cache: No
 
     - name: Enable and start Docker service
       systemd:
@@ -37,12 +45,15 @@
         enabled: yes
 
     - name: Add Kubernetes GPG key
-      command: curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+      get_url:
+        url: "{{ kubernetes_gpg_url }}"
+        dest: /usr/share/keyrings/kubernetes-archive-keyring.gpg
+        mode: '0644'
 
     - name: Add Kubernetes repository
       copy:
         content: |
-          deb https://apt.kubernetes.io/ kubernetes-xenial main
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
         dest: /etc/apt/sources.list.d/kubernetes.list
 
     - name: Install Kubernetes components
@@ -52,6 +63,7 @@
           - kubelet
           - kubectl
         state: present
+        update_cache: No
 
     - name: Hold Kubernetes packages
       apt:
@@ -62,26 +74,25 @@
         state: present
         force: yes
         allow_unauthenticated: yes
-        update_cache: yes
-        default_release: ""
         upgrade: no
 
 - hosts: master
   become: yes
   tasks:
     - name: Initialize Kubernetes control plane
-      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      command: kubeadm init --pod-network-cidr={{ pod_network_cidr }}
       register: kubeadm_init
 
     - name: Save kubeadm join command
       copy:
         dest: /tmp/kubeadm_join.sh
-        content: "{{ kubeadm_init.stdout_lines | join('\n') }}"
+        content: |
+          {{ kubeadm_init.stdout_lines | select("match", "kubeadm join") | join('\n') }}
         mode: '0700'
 
     - name: Set up kubectl for root user
       command: >
-        bash -c "mkdir -p $HOME/.kube && 
+        bash -c "mkdir -p $HOME/.kube &&
         cp -i /etc/kubernetes/admin.conf $HOME/.kube/config &&
         chown $(id -u):$(id -g) $HOME/.kube/config"
 
