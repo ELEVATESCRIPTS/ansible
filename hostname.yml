@@ -1,0 +1,28 @@
+---
+- hosts: all
+  become: yes
+  vars:
+    new_hostname: "my-new-hostname"  # Replace this with your desired hostname
+
+  tasks:
+    - name: Set the hostname
+      hostname:
+        name: "{{ new_hostname }}"
+
+    - name: Update /etc/hostname file
+      lineinfile:
+        path: /etc/hostname
+        line: "{{ new_hostname }}"
+        create: yes
+
+    - name: Update /etc/hosts file for the new hostname
+      lineinfile:
+        path: /etc/hosts
+        regexp: "^127\\.0\\.1\\.1\\s+"
+        line: "127.0.1.1   {{ new_hostname }}"
+        state: present
+
+    - name: Reboot the system to apply changes (optional)
+      reboot:
+        msg: "Rebooting the system to apply hostname change."
+        reboot_timeout: 300
