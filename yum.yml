@@ -1,0 +1,36 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Update APT package index
+      apt:
+        update_cache: yes
+
+    - name: Add a new APT repository
+      apt_repository:
+        repo: "deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_facts['distribution_codename'] }} main"
+        state: present
+
+    - name: Add a GPG key for the repository
+      apt_key:
+        url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B4FE6ACC0B21F32"
+        state: present
+
+    - name: Ensure specific packages are installed
+      apt:
+        name:
+          - curl
+          - vim
+        state: present
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Remove unnecessary packages
+      apt:
+        autoremove: yes
+
+    - name: Clean up APT cache
+      apt:
+        autoclean: yes
